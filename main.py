@@ -1,17 +1,18 @@
 import pandas as pd
 from sqlalchemy import create_engine, inspect
 from langchain.vectorstores import PGVector
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.sql import text
 
-class KnK:
-    def __init__(self, db_conn_str, db_name, embeddings, uniquer_id_identifier=' ~knkid~') -> None:
+class KnK(PGVector):
+    def __init__(self, db_conn_str, db_name, embedding_function, uniquer_id_identifier=' ~knkid~') -> None:
         self.db_conn_str = db_conn_str
         self.db_name = db_name
-        self.embeddings = embeddings
-        self.vectorstore = PGVector(
-            embedding_function=embeddings,
-            collection_name=db_name,
-            connection_string=db_conn_str
-        )
+        self.embedding_function = embedding_function
+        super().__init__(
+            embedding_function=self.embedding_function,
+            collection_name=self.db_name,
+            connection_string=self.db_conn_str)
         self.uniquer_id_identifier = uniquer_id_identifier
     
     def add_data(self, file, embedding_column):
@@ -19,6 +20,13 @@ class KnK:
         engine = create_engine(self.db_conn_str, echo=False)
         engine = create_engine(self.db_conn_str)
 
+        #Create PG Vector Extension for a new database or if it is not installed
+        list_of_ext = pd.read_sql('SELECT * FROM pg_extension;', self.db_conn_str)['extname'].to_list()
+        if 'vector' not in list_of_ext:
+            Session = scoped_session(sessionmaker(bind=engine))
+            s = Session()
+            s.execute(text('CREATE EXTENSION vector;'))
+            
         if not inspect(engine).has_table(self.db_name):
             df['KnK_unique_ID'] = df.index
             df.to_sql(name=self.db_name, con=engine, index=False)
@@ -32,7 +40,7 @@ class KnK:
             self.last_index = curr_index+len(df)
         
         docs = (df[embedding_column] + self.uniquer_id_identifier + df['KnK_unique_ID'].map(str))
-        self.vectorstore.add_texts(
+        super().add_texts(
             docs
         )
         
@@ -40,7 +48,7 @@ class KnK:
     
     def retrieve_data(self, query, num_of_results,search_type = 'similarity_search', columns = None):
         if search_type == 'similarity_search':
-            results = self.vectorstore.similarity_search(query=query, k=num_of_results)
+            results = super().similarity_search(query=query, k=num_of_results)
         
         ids = tuple((int(results[i].page_content.split(self.uniquer_id_identifier)[1]) for i in range(len(results))))
         
