@@ -46,10 +46,9 @@ class KnK(PGVector):
         
         return True
     
-    def retrieve_data(self, query, num_of_results,search_type = 'similarity_search', columns = None):
-        if search_type == 'similarity_search':
-            results = super().similarity_search(query=query, k=num_of_results)
-        
+    def retrieve_data(self, query, num_of_results,search_type = 'similarity', columns = None):
+        #TODO: Add all the search types
+        results = super().search(query=query, search_type=search_type, k=num_of_results)   
         ids = tuple((int(results[i].page_content.split(self.uniquer_id_identifier)[1]) for i in range(len(results))))
         
         sql_query = f"""
